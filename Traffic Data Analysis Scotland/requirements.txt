@@ -1,0 +1,6 @@
+plotly
+ipykernel
+geopandas
+matplotlib
+numpy
+folium
