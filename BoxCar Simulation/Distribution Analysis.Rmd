@@ -1,0 +1,952 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+#install.packages("readxl")
+library(readxl)
+```
+
+DRIVERS FILE
+
+```{r}
+#load datatset
+drivers <- read_excel("drivers.xlsx", sheet = "Sheet1")
+
+print(head(drivers))
+print(nrow(drivers))
+
+#NAs
+sum(is.na(drivers))
+
+```
+
+Dataset is loaded properly, no NAs and number of obserations as the excel file.
+
+Now the data will be properly extract:
+
+```{r}
+#Online time of each driver
+drivers$online_time <- as.numeric(difftime(drivers$offline_datetime,
+                                           drivers$arrival_datetime, units="hours"))
+#Inter-arrival time for driver (nrow-1 observation!)
+drivers$inter_arr <- c(NA,diff(drivers$arrival_datetime)/3600) #in hour
+#Arrival coordinates:
+
+#x-axis
+drivers$x_coordinate <- as.numeric(gsub("[()]", "", 
+                            sapply(strsplit(drivers$initial_location, ", "), "[", 1)))
+
+#y-axis
+drivers$y_coordinate <- as.numeric(gsub("[()]", "", 
+                            sapply(strsplit(drivers$initial_location, ", "), "[", 2)))
+
+#verify
+head(drivers[, c("id", "x_coordinate", "y_coordinate")])
+
+
+```
+
+ONLINE TIME
+
+```{r}
+#histogram
+hist(drivers$online_time,
+     col = "lightblue",
+     border = "black",
+     main = "Distribution of Online Time Drivers",
+     xlab = "Time online (h)",
+     ylab = "Frequency",
+     xlim=c(4,9))
+
+
+#Add red line (paper says uniform between 5 and 8)
+abline(v = 5, col = "red", lty = 2, lwd = 2)  
+abline(v = 8, col = "red", lty = 2, lwd = 2)
+
+legend("topright", legend = c("Observed Data", "Uniform Limit (5,8)"),
+       col = c("lightblue", "red"), lty = c(NA, 2), pch = c(15, NA), lwd = c(NA, 2),
+       bg = "white",cex=0.8)
+```
+
+The distribution BoxCar proposed is Uniform(5,8). Clearly here we do not observe any data between 5 and 6, other than that the distribution could be a uniform. We will perform test with H0 : Uniform(6,8).
+
+```{r}
+#test for online time of drivers
+
+#H0: Uniform(6,8)
+a <- 6
+b <- 8
+
+#we can perform a CHI-SQUARED TEST, it's possible to assume that each driver online time is independent from other drivers, then we can perform a Chi-Squared test
+
+#We will work with bins with constat prova inside each
+
+#thumb-rule, choos k in order to have expected number of observation in each bin >=5
+n_drivers <- nrow(drivers)
+
+#383 observation, seems reasonable to have k = 20
+
+alpha <- 0.10
+
+k <- 20
+
+p <- 1/k
+
+expected_i <- n_drivers * p #greater than 5, thumb rule ok
+
+bins <- seq(a, b, length.out = k + 1)
+
+counting <- cut(drivers$online_time, breaks = bins, include.lowest = TRUE)
+
+O_i <- table(counting)
+
+chi_stat <- sum((O_i - expected_i)^2/expected_i)
+
+chi_quant <- qchisq(1 - alpha, k-1, lower.tail = TRUE)
+
+chi_stat > chi_quant
+
+print(chi_stat)
+print(chi_quant)
+
+#FAIL TO REJECT H0 !!!!!!! ONLINE TIME DRIVERS IS UNIFORM(6,8)
+```
+
+INTERARRIVAL TIME FOR DRIVERS
+
+```{r}
+hist(drivers$inter_arr,
+     col = "lightblue",
+     border = "black",
+     probability = TRUE,
+     breaks=20,
+     main = "Distribution of Inter Arrival Times for Drivers",
+     xlab = "Inter-arrival time (h)",
+     ylab = "Density")
+
+x_vals <- seq(0, max(na.omit(drivers$inter_arr)), length.out = 100)
+lines(x_vals, dexp(x_vals, rate = 3), col = "darkblue", lwd = 2)
+
+legend("topright", legend = c("Observed Inter arrival times", 
+                              "Exponential Distribution (rate 3)"),
+       col = c("lightblue", "darkblue"), lty = c(NA, 1), 
+       pch = c(15, NA), lwd = c(NA, 2),
+       bg = "white")
+```
+
+Blue line is the exponential(3) distribution. Seems a reasonable test.
+
+```{r}
+#Again inter-arrival time of drivers can be assumed as independent, so we perform a chi-squared test
+
+lambda <- 3
+k <- 20 #as before
+
+p <- 1/k
+
+expected_i <- n_drivers * p
+
+#build intervals with constant prob inside
+
+num_int <- 0:(k-1)
+
+bins<- c(-log( 1 - num_int / k) / lambda, Inf) #build k intervals with const
+                                                #prob
+
+#count O_i
+
+counting <- cut(na.omit(drivers$inter_arr), breaks = bins, 
+                include.lowest = TRUE)
+
+O_i <- table(counting)
+
+chi_stat <- sum((O_i - expected_i)^2/expected_i)
+
+chi_quant <- qchisq(1 - alpha, k-1, lower.tail = TRUE)
+
+chi_stat > chi_quant
+
+print(chi_stat)
+print(chi_quant)
+#REFUSE EXPONENTIAL WITH RATE =3 REJECT H0!!!!
+
+```
+
+```{r}
+#Since the distribution of inter arrival times seems to follow an exponential distribution 
+
+lambda_hat <- 1/mean(na.omit(drivers$inter_arr))
+cat("lambda MLE is:", lambda_hat,"\n")
+
+#H0 is inter-arrival time is exp(rate=lamda.hat)
+k <- 20 #as before
+
+p <- 1/k
+
+expected_i <- n_drivers * p
+
+#build intervals with constant prob inside
+
+num_int <- 0:(k-1)
+
+bins<- c(-log( 1 - num_int / k) / lambda_hat, Inf) #build k intervals with const
+                                                #prob
+
+#count O_i
+
+counting <- cut(na.omit(drivers$inter_arr), breaks = bins, 
+                include.lowest = TRUE)
+
+O_i <- table(counting)
+
+chi_stat <- sum((O_i - expected_i)^2/expected_i)
+
+chi_quant <- qchisq(1 - alpha, k-1-1, lower.tail = TRUE) #fix the dof bcs we estimated lambda hat
+
+chi_stat > chi_quant
+
+print(chi_stat)
+print(chi_quant)
+
+#SO INTER-ARRIVAL LOCATION FOLLOWS A EXP(rate= lambda_hat (4....))|!H0
+```
+
+```{r}
+hist(drivers$inter_arr,
+     col = "lightblue",
+     border = "black",
+     probability = TRUE,
+     breaks=20,
+     main = "Distribution of Inter Arrival Times for Drivers",
+     xlab = "Inter-arrival time (h)",
+     ylab = "Density")
+
+x_vals <- seq(0, max(na.omit(drivers$inter_arr)), length.out = 100)
+lines(x_vals, dexp(x_vals, rate = lambda_hat), col = "darkblue", lwd = 2)
+lines(x_vals, dexp(x_vals, rate = 3), col = "red", lwd = 2)
+
+legend("topright", legend = c("Observed Inter arrival times", 
+                              paste0("Exponential Distribution (rate ",
+                              round(lambda_hat, 2),")"), 
+                              "Exponential Distribution (rate 3)"),
+       col = c("lightblue", "darkblue","red"), lty = c(NA, 1, 1), 
+       pch = c(15, NA,NA), lwd = c(NA, 2,2),
+       bg = "white")
+```
+
+ARRIVAL LOCATION FOR DRIVERS
+
+```{r}
+plot(drivers$x_coordinate, drivers$y_coordinate,
+     col = rgb(0, 0, 1, 0.5), pch = 16,
+     xlab = "X", ylab = "Y",
+     main = "Initial Distribution of Drivers")
+grid()
+
+```
+
+Seems more concentrated in the center of the area (center part of Squareshire).
+
+```{r}
+#let's test for Uniform( 0, 20 ) * Uniform(0 , 20), assuming independence between location for each driver. We perform chisquared
+
+k <- 5
+a <- 0
+b <- 20
+
+#bins on x and y
+x_seq <- seq(a, b , length.out = k + 1)
+y_seq <- seq(a, b , length.out = k + 1)
+
+
+#count on x and y
+x_count <- cut(drivers$x_coordinate, breaks = x_seq, include.lowest = TRUE)
+y_count <- cut(drivers$y_coordinate, breaks = y_seq, include.lowest = TRUE)
+
+obs_table <- table(x_count, y_count)
+
+obs_table
+
+expected_i <- sum(obs_table) / (k * k)
+
+chi_stat <- sum((O_i - expected_i)^2/expected_i)
+
+chi_quant <- qchisq(1 - alpha, k*k-1, lower.tail = TRUE)
+
+chi_stat > chi_quant
+
+print(chi_stat)
+
+print(chi_quant) 
+
+#NOT UNIFORM AT ALL!!!!!
+```
+
+Let's see component X and Y separately:
+
+```{r}
+#X-axis
+hist(drivers$x_coordinate, col = "lightblue", border = "black",
+     main = "Distribution of Arrival Location X-axis Drivers", 
+     xlab = "X-Location",
+     breaks=20,
+     ylab = "Frequency")
+```
+
+```{r}
+library(truncnorm)
+library(stats4)
+nll <- function(mu, sigma) {
+  
+  -sum(log(dtruncnorm(drivers$x_coordinate, a = 0, b = 20, mean = mu, sd = sigma)))
+}
+
+fit_trunc <- mle(nll, start = list(mu = mean(drivers$x_coordinate), sigma = sd(drivers$x_coordinate)))
+summary(fit_trunc)
+
+mu_est <- fit_trunc@coef["mu"]       
+sigma_est <- fit_trunc@coef["sigma"]
+
+
+F_trunc <- function(x, mu, sigma) {
+  lower <- 0
+  upper <- 20
+  (pnorm(x, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma)) /
+    (pnorm(upper, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma))
+}
+
+ks_result <- ks.test(drivers$x_coordinate, function(x) F_trunc(x, mu_est, sigma_est))
+print(ks_result)
+
+# Plot histogram with density overlay in English
+hist(drivers$x_coordinate, 
+     col = "lightblue", border = "black",
+     main = "Initial Driver Distribution on X-axis", 
+     xlab = "X-Coordinate", 
+     breaks = 20,
+     ylab = "Density", 
+     probability = TRUE)
+
+# Plot the fitted truncated normal density curve
+curve(dtruncnorm(x, a = 0, b = 20, mean = mu_est, sd = sigma_est), 
+      from = 0, to = 20, 
+      add = TRUE, col = "red", lwd = 2)
+
+# Add legend with a blue square for observed data and red line with parameter estimates
+legend("topright", 
+       legend = c("Observed Driver Location ", sprintf("Truncated Normal (mu = %.2f, sigma = %.2f)", mu_est, sigma_est)),
+       col = c("lightblue", "red"),
+       pch = c(15, NA),  
+       lty = c(NA, 1),    
+       lwd = c(NA, 2),
+       cex=0.6)
+```
+
+```{r}
+
+
+```
+
+```{r}
+#Y-axis
+hist(drivers$y_coordinate, col = "lightblue", border = "black",
+     main = "Distribution of Arrival Location Y-axis Drivers",
+     xlab = "Y-Location", breaks=20,
+     ylab = "Frequency")
+```
+
+```{r}
+nll <- function(mu, sigma) {
+  
+  -sum(log(dtruncnorm(drivers$y_coordinate, a = 0, b = 20, mean = mu, sd = sigma)))
+}
+
+fit_trunc <- mle(nll, start = list(mu = mean(drivers$y_coordinate), sigma = sd(drivers$y_coordinate)))
+summary(fit_trunc)
+
+mu_est <- fit_trunc@coef["mu"]       
+sigma_est <- fit_trunc@coef["sigma"]
+
+
+F_trunc <- function(x, mu, sigma) {
+  lower <- 0
+  upper <- 20
+  (pnorm(x, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma)) /
+    (pnorm(upper, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma))
+}
+
+ks_result <- ks.test(drivers$y_coordinate, function(x) F_trunc(x, mu_est, sigma_est))
+print(ks_result)
+
+# Plot histogram with density overlay in English
+hist(drivers$y_coordinate, 
+     col = "lightblue", border = "black",
+     main = "Initial Driver Distribution on Y-axis", 
+     xlab = "Y-Coordinate", 
+     breaks = 20,
+     ylab = "Density", 
+     probability = TRUE)
+
+# Plot the fitted truncated normal density curve
+curve(dtruncnorm(x, a = 0, b = 20, mean = mu_est, sd = sigma_est), 
+      from = 0, to = 20, 
+      add = TRUE, col = "red", lwd = 2)
+
+# Add legend with a blue square for observed data and red line with parameter estimates
+legend("topleft", 
+       legend = c("Observed Driver Location ", sprintf("Truncated Normal (mu = %.2f, sigma = %.2f)", mu_est, sigma_est)),
+       col = c("lightblue", "red"),
+       pch = c(15, NA),  
+       lty = c(NA, 1),    
+       lwd = c(NA, 2),
+       cex=0.6)
+
+
+
+```
+
+```{r}
+
+
+```
+
+RIDERS
+
+```{r}
+#load datatset
+riders <- read_excel("riders.xlsx", sheet = "Sheet1")
+
+print(head(riders))
+print(nrow(riders))
+```
+
+Extract the variables:
+
+```{r}
+
+#Inter-arrival time for driver (nrow-1 observation!)
+riders$inter_arr <- c(NA,diff(riders$request_datetime)/3600) #in hour
+
+riders$ride_time <- as.numeric(difftime(riders$dropoff_datetime,
+                                           riders$pickup_datetime, units="hours"))
+
+#Arrival coordinates:
+
+#x-axis PICK UP
+riders$x_coordinate_pu <- as.numeric(gsub("[()]", "", 
+                            sapply(strsplit(riders$pickup_location, ", "), "[", 1)))
+
+#y-axis PICK UP
+riders$y_coordinate_pu <- as.numeric(gsub("[()]", "", 
+                            sapply(strsplit(riders$pickup_location, ", "), "[", 2)))
+
+#x-axis DROP OFF
+riders$x_coordinate_do <- as.numeric(gsub("[()]", "", 
+                            sapply(strsplit(riders$dropoff_location, ", "), "[", 1)))
+
+#y-axis DROP OFF
+riders$y_coordinate_do <- as.numeric(gsub("[()]", "", 
+                            sapply(strsplit(riders$dropoff_location, ", "), "[", 2)))
+
+
+#verify
+head(riders[, c("id" ,"x_coordinate_pu", "y_coordinate_pu","x_coordinate_do", "y_coordinate_do", "inter_arr","ride_time")])
+```
+
+```{r}
+#inter-arrival riders
+
+#histogram for inter-arrival
+hist(riders$inter_arr, col = "lightblue", border = "black", probability = TRUE,
+     breaks=20, main = "Distribution of Inter Arrival Times for Riders", 
+     xlab = "Inter-arrival time (h)",mylab = "Density")
+
+#plot over the hist the candidate distribution
+x_vals <- seq(0, max(na.omit(riders$inter_arr)), length.out = 100)
+lines(x_vals, dexp(x_vals, rate = 30), col = "darkblue", lwd = 2)
+
+legend("topright", legend = c("Observed Inter arrival times", 
+                              "Exponential Distribution (rate 30)"),
+       col = c("lightblue", "darkblue"), lty = c(NA, 1), pch = c(15, NA),
+       lwd = c(NA, 2), bg = "white")
+```
+
+TEST INTER-ARRIVAL TIME FOR RIDERS
+
+```{r}
+n_riders <- nrow(riders)
+#3040 observations, k = 300 seems reasonable
+
+#Again inter-arrival time of riders can be assumed as independent, so we perform a chi-squared test
+
+lambda <- 30
+k <- 300 #as before
+
+p <- 1/k
+
+expected_i <- n_riders * p #greater than 10 (thumb rule is ok)
+
+#build intervals with constant prob inside
+
+num_int <- 0:(k-1)
+
+bins<- c(-log( 1 - num_int / k) / lambda, Inf) #build k intervals with const
+                                                #prob
+
+#count O_i
+
+counting <- cut(na.omit(riders$inter_arr), breaks = bins, 
+                include.lowest = TRUE)
+
+O_i <- table(counting)
+
+chi_stat <- sum((O_i - expected_i)^2/expected_i)
+
+chi_quant <- qchisq(1 - alpha, k-1, lower.tail = TRUE)
+
+chi_stat > chi_quant
+
+print(chi_stat)
+print(chi_quant)
+#ACCEPT EXP (rate = 30 ) for riders inter arrival time
+
+```
+
+```{r}
+#PICK-UP LOCATION
+plot(riders$x_coordinate_pu, riders$y_coordinate_pu,
+     col = rgb(0, 0, 1, 0.5), pch = 16,
+     xlab = "X", ylab = "Y",
+     main = "Pick-up Position Distribution of Riders")
+grid()
+
+```
+
+```{r}
+k <- 20
+a <- 0
+b <- 20
+
+#bins on x and y
+x_seq <- seq(a, b , length.out = k + 1)
+y_seq <- seq(a, b , length.out = k + 1)
+
+
+#count on x and y
+x_count <- cut(riders$x_coordinate_pu, breaks = x_seq, include.lowest = TRUE)
+y_count <- cut(riders$y_coordinate_pu, breaks = y_seq, include.lowest = TRUE)
+
+obs_table <- table(x_count, y_count)
+
+expected_i <- sum(obs_table) / (k * k)
+
+chi_stat <- sum((O_i - expected_i)^2/expected_i)
+
+chi_quant <- qchisq(1 - alpha, k*k-1, lower.tail = TRUE)
+
+chi_stat > chi_quant
+
+print(chi_stat)
+
+print(chi_quant) 
+#CLEARLY NOT UNIFORM!
+```
+
+Does not really look uniform, let's analyse the separate variables for pick up:
+
+```{r}
+#X-axis pickup riders
+hist(riders$x_coordinate_pu, col = "lightblue", border = "black",
+     main = "Pick-up Location Distribution on X-axis for Riders", 
+     xlab = "X-Location", breaks=20,
+     ylab = "Frequency")
+```
+
+Not uniform at all.
+
+TEST X-AXIS PICK UP LOCATION
+
+```{r}
+# x pu
+
+library(truncnorm)
+library(stats4)
+
+nll <- function(mu, sigma) {
+  
+  -sum(log(dtruncnorm(riders$x_coordinate_pu, a = 0, b = 20, mean = mu, sd = sigma)))
+}
+
+fit_trunc <- mle(nll, start = list(mu = mean(riders$x_coordinate_pu), sigma = sd(riders$x_coordinate_pu)))
+summary(fit_trunc)
+
+mu_est <- fit_trunc@coef["mu"]       
+sigma_est <- fit_trunc@coef["sigma"]
+
+
+F_trunc <- function(x, mu, sigma) {
+  lower <- 0
+  upper <- 20
+  (pnorm(x, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma)) /
+    (pnorm(upper, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma))
+}
+
+ks_result <- ks.test(riders$x_coordinate_pu, function(x) F_trunc(x, mu_est, sigma_est))
+print(ks_result)
+
+# Plot histogram with density overlay in English
+hist(riders$x_coordinate_pu, 
+     col = "lightblue", border = "black",
+     main = "Pick-up Location Distribution on X-axis", 
+     xlab = "X-Coordinate", 
+     breaks = 20,
+     ylab = "Density", 
+     probability = TRUE)
+
+# Plot the fitted truncated normal density curve
+curve(dtruncnorm(x, a = 0, b = 20, mean = mu_est, sd = sigma_est), 
+      from = 0, to = 20, 
+      add = TRUE, col = "red", lwd = 2)
+
+# Add legend with a blue square for observed data and red line with parameter estimates
+legend("topright", 
+       legend = c("Observed Rider Location", sprintf("Truncated Normal (mu = %.2f, sigma = %.2f)", mu_est, sigma_est)),
+       col = c("lightblue", "red"),
+       pch = c(15, NA),  
+       lty = c(NA, 1),    
+       lwd = c(NA, 2),
+       cex=0.8)
+```
+
+```{r}
+
+```
+
+```{r}
+#Y-axis pickup riders
+hist(riders$y_coordinate_pu, col = "lightblue", border = "black",
+     main = "Pick-up Location Distribution on Y-axis for Riders",
+     xlab = "Y-Location", breaks=20,
+     ylab = "Frequency")
+```
+
+Not uniform.
+
+```{r}
+# y pu
+
+nll <- function(mu, sigma) {
+  
+  -sum(log(dtruncnorm(riders$y_coordinate_pu, a = 0, b = 20, mean = mu, sd = sigma)))
+}
+
+fit_trunc <- mle(nll, start = list(mu = mean(riders$y_coordinate_pu), sigma = sd(riders$y_coordinate_pu)))
+summary(fit_trunc)
+
+mu_est <- fit_trunc@coef["mu"]       
+sigma_est <- fit_trunc@coef["sigma"]
+
+
+F_trunc <- function(x, mu, sigma) {
+  lower <- 0
+  upper <- 20
+  (pnorm(x, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma)) /
+    (pnorm(upper, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma))
+}
+
+ks_result <- ks.test(riders$y_coordinate_pu, function(x) F_trunc(x, mu_est, sigma_est))
+print(ks_result)
+
+# Plot histogram with density overlay in English
+hist(riders$y_coordinate_pu, 
+     col = "lightblue", border = "black",
+     main = "Pick-up Location Distribution on Y-axis", 
+     xlab = "Y-Coordinate", 
+     breaks = 20,
+     ylab = "Density", 
+     probability = TRUE)
+
+# Plot the fitted truncated normal density curve
+curve(dtruncnorm(x, a = 0, b = 20, mean = mu_est, sd = sigma_est), 
+      from = 0, to = 20, 
+      add = TRUE, col = "red", lwd = 2)
+
+# Add legend with a blue square for observed data and red line with parameter estimates
+legend("topright", 
+       legend = c("Observed Rider Location", sprintf("Truncated Normal (mu = %.2f, sigma = %.2f)", mu_est, sigma_est)),
+       col = c("lightblue", "red"),
+       pch = c(15, NA),  
+       lty = c(NA, 1),    
+       lwd = c(NA, 2),
+       cex=0.7)
+```
+
+```         
+```
+
+```         
+```
+
+Drop-off:
+
+```{r}
+#DROP-OFF
+plot(riders$x_coordinate_do, riders$y_coordinate_do,
+     col = rgb(0, 0, 1, 0.5), pch = 16,
+     xlab = "X", ylab = "Y",
+     main = "Drop-Off Position Distribution of Riders")
+grid()
+
+```
+
+does not look uniform (again normal?)
+
+```{r}
+k <- 20
+a <- 0
+b <- 20
+
+#bins on x and y
+x_seq <- seq(a, b , length.out = k + 1)
+y_seq <- seq(a, b , length.out = k + 1)
+
+
+#count on x and y
+x_count <- cut(riders$x_coordinate_do, breaks = x_seq, include.lowest = TRUE)
+y_count <- cut(riders$y_coordinate_do, breaks = y_seq, include.lowest = TRUE)
+
+obs_table <- table(x_count, y_count)
+
+expected_i <- sum(obs_table) / (k * k)
+
+chi_stat <- sum((O_i - expected_i)^2/expected_i)
+
+chi_quant <- qchisq(1 - alpha, k*k-1, lower.tail = TRUE)
+
+chi_stat > chi_quant
+
+print(chi_stat)
+
+print(chi_quant)
+
+#NOT UNIFORM
+```
+
+```{r}
+hist(riders$x_coordinate_do, col = "lightblue", border = "black",
+     main = "Drop-off Location Distribution on X-axis for Riders",
+     xlab = "X-Location", breaks=20,
+     ylab = "Frequency")
+```
+
+Normal?
+
+```{r}
+nll <- function(mu, sigma) {
+  
+  -sum(log(dtruncnorm(riders$x_coordinate_do, a = 0, b = 20, mean = mu, sd = sigma)))
+}
+
+fit_trunc <- mle(nll, start = list(mu = mean(riders$x_coordinate_do), sigma = sd(riders$x_coordinate_do)))
+summary(fit_trunc)
+
+mu_est <- fit_trunc@coef["mu"]       
+sigma_est <- fit_trunc@coef["sigma"]
+
+
+F_trunc <- function(x, mu, sigma) {
+  lower <- 0
+  upper <- 20
+  (pnorm(x, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma)) /
+    (pnorm(upper, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma))
+}
+
+ks_result <- ks.test(riders$x_coordinate_do, function(x) F_trunc(x, mu_est, sigma_est))
+print(ks_result)
+
+# Plot histogram with density overlay in English
+hist(riders$x_coordinate_do, 
+     col = "lightblue", border = "black",
+     main = "Drop-off Location Distribution on X-axis", 
+     xlab = "X-Coordinate", 
+     breaks = 20,
+     ylab = "Density", 
+     probability = TRUE)
+
+# Plot the fitted truncated normal density curve
+curve(dtruncnorm(x, a = 0, b = 20, mean = mu_est, sd = sigma_est), 
+      from = 0, to = 20, 
+      add = TRUE, col = "red", lwd = 2)
+
+# Add legend with a blue square for observed data and red line with parameter estimates
+legend("topright", 
+       legend = c("Observed Rider Location", sprintf("Truncated Normal (mu = %.2f, sigma = %.2f)", mu_est, sigma_est)),
+       col = c("lightblue", "red"),
+       pch = c(15, NA),  
+       lty = c(NA, 1),    
+       lwd = c(NA, 2),
+       cex=0.6)
+```
+
+```{r}
+
+```
+
+```{r}
+#Y-axis pickup riders
+hist(riders$y_coordinate_do, col = "lightblue", border = "black",
+     main = "Drop-Off Location Distribution on Y-axis for Riders", 
+     xlab = "Y-Location", breaks=20,
+     ylab = "Frequency")
+```
+
+Don't know what, but not uniform.
+
+MAYBE WE COULD TRY AGAIN A NORMAL.
+
+```{r}
+#test again normality
+nll <- function(mu, sigma) {
+  
+  -sum(log(dtruncnorm(riders$y_coordinate_do, a = 0, b = 20, mean = mu, sd = sigma)))
+}
+
+fit_trunc <- mle(nll, start = list(mu = mean(riders$y_coordinate_do), sigma = sd(riders$y_coordinate_do)))
+summary(fit_trunc)
+
+mu_est <- fit_trunc@coef["mu"]       
+sigma_est <- fit_trunc@coef["sigma"]
+
+
+F_trunc <- function(x, mu, sigma) {
+  lower <- 0
+  upper <- 20
+  (pnorm(x, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma)) /
+    (pnorm(upper, mean = mu, sd = sigma) - pnorm(lower, mean = mu, sd = sigma))
+}
+
+ks_result <- ks.test(riders$y_coordinate_do, function(x) F_trunc(x, mu_est, sigma_est))
+print(ks_result)
+
+# Plot histogram with density overlay in English
+hist(riders$y_coordinate_do, 
+     col = "lightblue", border = "black",
+     main = "Drop-off Location Distribution on Y-axis", 
+     xlab = "Y-Coordinate", 
+     breaks = 20,
+     ylab = "Density", 
+     probability = TRUE)
+
+# Plot the fitted truncated normal density curve
+curve(dtruncnorm(x, a = 0, b = 20, mean = mu_est, sd = sigma_est), 
+      from = 0, to = 20, 
+      add = TRUE, col = "red", lwd = 2)
+
+# Add legend with a blue square for observed data and red line with parameter estimates
+legend("topleft", 
+       legend = c("Observed Rider Location", sprintf("Truncated Normal (mu = %.2f, sigma = %.2f)", mu_est, sigma_est)),
+       col = c("lightblue", "red"),
+       pch = c(15, NA),  
+       lty = c(NA, 1),    
+       lwd = c(NA, 2),
+       cex=0.6)
+
+```
+
+Now, we have a look to the time of the ride. (little bit more complicated since each time of the ride depends on the expected time mu_t).
+
+Compute length of the ride (for riders that matched a driver and completed the ride, otherwise NA):
+
+```{r}
+# Default is NA
+riders$ride_length <- NA
+
+#Search for riders that started and finished the ride
+valid_rides <- !is.na(riders$pickup_datetime) & !is.na(riders$dropoff_datetime)
+
+#for that riders compute length od the ride
+riders$ride_length[valid_rides] <- sqrt(
+  (riders$x_coordinate_pu[valid_rides] - riders$x_coordinate_do[valid_rides])^2 + 
+  (riders$y_coordinate_pu[valid_rides] - riders$y_coordinate_do[valid_rides])^2
+)
+
+
+# Verify
+head(riders[, c("id", "x_coordinate_pu", "y_coordinate_pu", "x_coordinate_do", "y_coordinate_do", "ride_length")])
+
+```
+
+We have that mu_t=d_od/20, then time of the ride should be uniform between 0.8\*mu_t and 1.2\*mu_t:
+
+```{r}
+#mu_t is epected time of the ride
+riders$expected_time <- riders$ride_length / 20
+
+#lower and upper time for the ride
+riders$lower_bound_time <- 0.8 * riders$expected_time
+riders$upper_bound_time <- 1.2 * riders$expected_time
+
+#Count how many of the rides have time that stay inside the bounds
+within_bounds <- riders$ride_time[valid_rides] >= riders$lower_bound_time[valid_rides] &
+                 riders$ride_time[valid_rides] <= riders$upper_bound_time[valid_rides]
+
+#Percentange
+percentage_within_bounds <- mean(within_bounds) * 100
+
+cat("Percentage of the rides that have a time that is between 0.8 mu_t and 1.2 u_t is:",percentage_within_bounds,"%\n")
+```
+
+TEST:
+
+```{r}
+#normalise ride_time by mu_t in order to plot hist:
+normal_ride_time <- riders$ride_time[valid_rides]/riders$expected_time[valid_rides]
+
+#histogram
+hist(normal_ride_time, col = "lightblue", border = "black",
+     main = "Distribution of factor multiplying mu_t", xlab = "Factor",
+     ylab = "Frequency", xlim=c(0.5,1.5))
+
+
+#Add red line (paper says uniform between 5 and 8)
+abline(v = 0.8, col = "red", lty = 2, lwd = 2)  
+abline(v = 1.2, col = "red", lty = 2, lwd = 2)
+
+legend("topright", legend = c("Observed Factors", "Uniform Limit (0.8,1.2)"),
+       col = c("lightblue", "red"), lty = c(NA, 2), pch = c(15, NA), 
+       lwd = c(NA, 2), bg = "white",cex=0.8)
+```
+
+In order to plot something "understandable" we normalise the real_time of the drive by the expected time. If the distribution is acutally uniform (0.8mu_t,1.2mu_t) then the normalised should be Uniform(0.2,1.2) which really seems to be the case.
+
+We can then do a test on the normalised data! (to test H0: Uniform(0.8,1.2))
+
+```{r}
+#Since time of each ride can be dependent on others (example: peak hours all the rides can take longer than usual) this time we perform a Kolmogorov - Smirnov Test
+
+a <- 0.8
+b <- 1.2
+
+n <- length(normal_ride_time)
+F_n <- (1:n)/n 
+
+F_true <- (sort(normal_ride_time) - a) / (b -a)
+
+D <- max(abs(F_true - F_n)) #Correct!! same result as R function (see later)
+
+C_0.9 <- 1.224 #FROM SLIDES
+
+(sqrt(n) + 0.12 + 0.11/sqrt(n)) * D > C_0.9
+```
+
+```{r}
+
+#double-check
+ks_result <- ks.test(normal_ride_time, "punif", min = 0.8, max = 1.2)
+
+print(ks_result)
+
+
+```
