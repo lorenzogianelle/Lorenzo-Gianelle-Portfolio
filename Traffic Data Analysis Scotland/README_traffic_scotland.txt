@@ -62,8 +62,6 @@ Scottish Government Road Traffic Data
 Google Mobility Reports
 Open Transport Data APIs
 
-NOTE:Group work completed at the University of Edinburgh. All tasks were understood and shared, ensuring that all applied skills were learned throughout the project.
-
 
 
 
