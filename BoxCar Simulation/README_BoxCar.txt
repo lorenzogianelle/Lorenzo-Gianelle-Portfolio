@@ -39,4 +39,3 @@ The simulation operates as a discrete-event system, meaning it processes events 
 
 -Ride Completion & System Exit (tracking income, working hours, and waiting times).
 
-NOTE: Group work completed at the University of Edinburgh. All tasks were understood and shared, ensuring that all applied skills were learned throughout the project.
