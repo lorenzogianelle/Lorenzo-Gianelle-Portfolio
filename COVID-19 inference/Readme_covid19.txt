@@ -1,3 +1,4 @@
+
 COVID-19 Fatal Incidence Inference
 
 OVERVIEW
@@ -27,6 +28,5 @@ Generates plots showing estimated new infections per day, simulated vs. real dea
 Dependencies
 The code is implemented in base R with no external package dependencies.
 
-NOTE: Group work completed at the University of Edinburgh. All tasks were understood and shared, ensuring that all applied skills were learned throughout the project.
 
 
