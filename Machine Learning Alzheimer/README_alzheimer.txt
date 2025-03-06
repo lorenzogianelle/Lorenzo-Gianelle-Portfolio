@@ -38,5 +38,3 @@ The analysis was conducted using Python with the following key libraries:
 FILE DESCRIPTION
 
 ML1.pdf – The final PDF report containing the full machine learning workflow, including data preprocessing, model selection, results, and interpretation.
-
-Note: Group work completed at the University of Edinburgh. All tasks were understood and shared, ensuring that all applied skills were learned throughout the project.
